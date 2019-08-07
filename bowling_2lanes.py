@@ -12,15 +12,20 @@ import signal
 n_rays = 20
 left_list =  [6, 13, 19, 26]
 right_list = [12, 16, 20, 21]
+second_left_list =  [6, 13, 19, 26]
+second_right_list = [12, 16, 20, 21]
 
 # line inversion
 if False:
-    left_list.reverse()
-    right_list.reverse()
+    for list_ in (left_list, second_left_list, right_list, second_right_list):
+        list_.reverse()
     left_list, right_list = right_list, left_list
+    second_left_list, second_right_list = second_right_list, second_left_list
 
 SIGSTART = '\x01'
 SIGSTOP = '\x02'
+RESETFIRST = '\x03'
+RESETSECOND = '\x04'
 
 proc = psutil.Process()
 proc.cpu_affinity([3])
@@ -93,14 +98,23 @@ class Side:
 left = Side(0, 'left')
 right = Side(1, 'right')
 
+second_left = Side(2, 'second_left')
+second_right = Side(3, 'second_right')
 
 # fill GPIO map evaluating prev1 and prev2
-gpio_map = {}
-for i in range(len(left_list)):
-    gpio_map[left_list[i]] = GPIO(left, left_list[i-1], left_list[i-2])
-for i in range(len(right_list)):
-    gpio_map[right_list[i]] = GPIO(right, right_list[i-1], right_list[i-2])
+def assign_gpio(side_type, side_list, line_map):
+    for i in range(len(side_list)):
+        gpio = GPIO(side_type, side_list[i-1], side_list[i-2])
+        line_map[side_list[i]] = gpio_map[side_list[i]] = gpio
 
+gpio_map = {}
+first_gpio_map = {}
+second_gpio_map = {}
+
+assign_gpio(left, left_list, first_gpio_map)
+assign_gpio(right, right_list, first_gpio_map)
+assign_gpio(second_left, second_left_list, second_gpio_map)
+assign_gpio(second_right, second_right_list, second_gpio_map)
 
 def onHigh(gpio_num):
     gpio = gpio_map[gpio_num]
@@ -119,6 +133,24 @@ def onHigh(gpio_num):
 def on_sigint(*args, **kwargs):
     raise KeyboardInterrupt('process killed')
 
+def reset(lane):
+    start = time.time()
+    if lane == 'first':
+        left.reset(start)
+        right.reset(start)
+        for gpio_num, gpio in first_gpio_map.iteritems():
+            gpio.reset()
+        # first detectors depend on these GPIOs
+        first_gpio_map[left_list[-1]].activated = True
+        first_gpio_map[right_list[-1]].activated = True
+    elif lane == 'second':
+        second_left.reset(start)
+        second_right.reset(start)
+        for gpio_num, gpio in second_gpio_map.iteritems():
+            gpio.reset()
+        # first detectors depend on these GPIOs
+        second_gpio_map[second_left_list[-1]].activated = True
+        second_gpio_map[second_right_list[-1]].activated = True
 
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, on_sigint)
@@ -154,50 +186,45 @@ if __name__ == '__main__':
             conn, addr = sock.accept()
             conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             logging.debug('accepted address {}:{}'.format(*addr))
-            time.sleep(1)            
-            # tracking system cycle
+            time.sleep(1)
+            reset('first')
+            reset('second')
+            logging.debug('waiting for SIGSTART command')
+            conn.settimeout(None)
             while True:
-                logging.debug('waiting for SIGSTART command')
-                conn.settimeout(None)
                 cmd = conn.recv(1)
                 if cmd == SIGSTART:
                     logging.debug('got SIGSTART command')
-                elif cmd == SIGSTOP:
-                    logging.debug('got SIGSTOP instead of SIGSTART')
-                    continue
-                elif not cmd:
-                    logging.debug('got null command, connection broken')
                     break
-                else:
-                    logging.debug('got unknown command, interpreting as SIGSTART')
-                conn.settimeout(0.7)
-                start = time.time()
-                left.reset(start)
-                right.reset(start)
-                for gpio_num, gpio in gpio_map.iteritems():
-                    gpio.reset()
-                # first detectors depend on these GPIOs
-                gpio_map[left_list[-1]].activated = True
-                gpio_map[right_list[-1]].activated = True
-                logging.debug('entering detection cycle')
-                connected = True
-                while left.counter < n_rays or right.counter < n_rays:
-                    try:
-                        cmd = conn.recv(1)
-                        if cmd == SIGSTOP:
-                            logging.debug('got SIGSTOP command')
-                        elif not cmd:
-                            logging.debug('got null command, connection broken')
-                        else:
-                            logging.debug('got unknown command, interpreting as SIGSTOP')
+            # tracking system cycle
+            logging.debug('entering detection cycle')
+            connected = True
+            conn.settimeout(0.7)
+            while True:
+                try:
+                    cmd = conn.recv(1)
+                    if cmd == SIGSTOP:
+                        logging.debug('got SIGSTOP command')
                         break
-                    except socket.timeout:
-                        pass
-                connected = False
-                logging.debug(
-                    '{} detections, left detection cycle'.format(
-                        left.detection_counter + right.detection_counter
-                        ))
+                    elif cmd == RESETFIRST:
+                        logging.debug('got RESETFIRST command')
+                        reset('first')
+                    elif cmd == RESETSECOND:
+                        logging.debug('got RESETSECOND command')
+                        reset('second')
+                    elif not cmd:
+                        logging.debug('got null command, connection broken')
+                        break
+                    else:
+                        logging.debug('got unknown command, interpreting as SIGSTOP')
+                        break
+                except socket.timeout:
+                    pass
+            connected = False
+            logging.debug(
+                '{} detections, left detection cycle'.format(
+                    left.detection_counter + right.detection_counter
+                    ))
         except KeyboardInterrupt:
             logging.debug('caught keyboard interrupt')
             break
