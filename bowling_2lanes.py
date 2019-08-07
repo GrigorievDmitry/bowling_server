@@ -71,11 +71,12 @@ class GPIO:
             self.prev2_gpio_num)
 
 class Side:
-    def __init__(self, side, name):
+    def __init__(self, side, name, lane):
         self.side = side
         self.counter = 0
         self.name = name
         self.detection_counter = 0
+        self.lane = lane
 
     def detect(self, inc):
         self.counter += inc
@@ -95,11 +96,19 @@ class Side:
         self.detection_counter = 0
 
 
-left = Side(0, 'left')
-right = Side(1, 'right')
+class Lane:
+    def __init__(self):
+        self.active = True
 
-second_left = Side(2, 'second_left')
-second_right = Side(3, 'second_right')
+
+first_lane = Lane()
+second_lane = Lane()
+
+left = Side(0, 'left', first_lane)
+right = Side(1, 'right', first_lane)
+
+second_left = Side(2, 'second_left', second_lane)
+second_right = Side(3, 'second_right', second_lane)
 
 # fill GPIO map evaluating prev1 and prev2
 def assign_gpio(side_type, side_list, line_map):
@@ -118,7 +127,7 @@ assign_gpio(second_right, second_right_list, second_gpio_map)
 
 def onHigh(gpio_num):
     gpio = gpio_map[gpio_num]
-    if gpio.detected() and gpio.active and connected:
+    if gpio.detected() and gpio.active and connected and gpio.side.lane.active:
         gpio.active = False
         gpio.activated = True
         gpio.prev2.active = True
@@ -133,9 +142,10 @@ def onHigh(gpio_num):
 def on_sigint(*args, **kwargs):
     raise KeyboardInterrupt('process killed')
 
-def reset(lane):
+def reset(lane, sleep=0.1):
     start = time.time()
     if lane == 'first':
+        first_lane.active = False
         left.reset(start)
         right.reset(start)
         for gpio_num, gpio in first_gpio_map.iteritems():
@@ -143,7 +153,10 @@ def reset(lane):
         # first detectors depend on these GPIOs
         first_gpio_map[left_list[-1]].activated = True
         first_gpio_map[right_list[-1]].activated = True
+        time.sleep(sleep)
+        first_lane.active = True
     elif lane == 'second':
+        second_lane.active = False
         second_left.reset(start)
         second_right.reset(start)
         for gpio_num, gpio in second_gpio_map.iteritems():
@@ -151,6 +164,8 @@ def reset(lane):
         # first detectors depend on these GPIOs
         second_gpio_map[second_left_list[-1]].activated = True
         second_gpio_map[second_right_list[-1]].activated = True
+        time.sleep(sleep)
+        second_lane.active = True
 
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, on_sigint)
@@ -208,10 +223,10 @@ if __name__ == '__main__':
                         break
                     elif cmd == RESETFIRST:
                         logging.debug('got RESETFIRST command')
-                        reset('first')
+                        reset('first', 10)
                     elif cmd == RESETSECOND:
                         logging.debug('got RESETSECOND command')
-                        reset('second')
+                        reset('second', 10)
                     elif not cmd:
                         logging.debug('got null command, connection broken')
                         break
