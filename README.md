@@ -20,6 +20,6 @@ Second-year undergraduate  student, Massachusets Institute of Technology, savva@
 
 *Financial support*
 
-Yury Senatorov, yuri.senatorov@gmail.com\
+Yury Senatorov, yuri.senatorov@gmail.com
 
-Sergey Baranovsky, barsdefy@gmail.com\
+Sergey Baranovsky, barsdefy@gmail.com
