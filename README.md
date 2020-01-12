@@ -18,3 +18,6 @@ NASA ARC / BAERI, USA, viacheslav.m.sadykov@nasa.gov
 Savva Morozov - assistant hardware developer\
 Second-year undergraduate  student, Massachusets Institute of Technology, savva@mit.edu
 
+*Financial aid*
+
+Yury Senatorov and Sergey Baranovsky
