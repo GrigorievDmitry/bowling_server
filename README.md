@@ -24,4 +24,4 @@ Yury Senatorov, yuri.senatorov@gmail.com
 
 Sergey Baranovsky, barsdefy@gmail.com
 
-By now, this project is non commercial.
+*By now, this project is non commercial.*
